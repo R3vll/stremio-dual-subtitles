@@ -1071,6 +1071,17 @@ test('mergeSubtitles: style code string is accepted too', () => {
   );
 });
 
+test('mergeSubtitles: styled unmatched path renders main line only (no swap/undefined artifacts)', () => {
+  const main = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'one' }
+  ];
+  const trans = [
+    { id: '1', startTime: '00:00:30,000', endTime: '00:00:31,000', text: 'uno' }
+  ];
+  const merged = mergeSubtitles(main, trans, { mainLang: 'eng', transLang: 'tur' });
+  assert.strictEqual(merged[0].text, '<b>one</b>');
+});
+
 // ============================================================================
 // RESULTS
 // ============================================================================

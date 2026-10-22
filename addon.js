@@ -510,6 +510,10 @@ function htmlEncodeSrt(text) {
  *        primary cue (handles cue-boundary mismatches).
  * @param {boolean}     [options.enableOffset=true]
  * @param {boolean}     [options.enableDrift=true]
+ * @param {Object|string|null} [options.style=null]
+ *        Styling config: either a style object or the 6-field code string
+ *        `mainColor|transColor|mainBold|transItalic|marker|swapLines`;
+ *        null/undefined falls back to the legacy default styling.
  */
 function mergeSubtitles(mainSubs, transSubs, options = {}) {
   const opts = typeof options === 'number'
@@ -554,6 +558,7 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
   const { matches } = alignment;
 
   const transJoiner = isCjkLanguage(transLang) ? '' : ' ';
+  const styleCfg = style == null ? DEFAULT_STYLE_CLONE : parseStyleCode(style);
   const mergedSubs = [];
 
   for (let mi = 0; mi < mainTimed.length; mi++) {
@@ -566,7 +571,6 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
     if (!cleanMainText) continue;
 
     let mergedText;
-    const styleCfg = style == null ? DEFAULT_STYLE_CLONE : parseStyleCode(style);
     const transIdxs = matches.get(mi);
     if (transIdxs && transIdxs.length > 0) {
       const transParts = [];
