@@ -40,11 +40,12 @@ mergeSubtitles → styleRenderer.applyStyle(text, mainText, transText, styleConf
 
 ### Manifest (addon.js)
 - Keep `behaviorHints.configurable: true`, `configurationRequired: true`.
-- `config` array gains style keys after the two language selects:
-  - `transColor` — select, options: `#94a3b8` (default Gray), `#f43f5e`, `#38bdf8`, `#22c55e`, `#eab308`, `#a855f7`, `#ffffff`; label = preset name + hex.
+- `manifest` config gains style keys after the two language selects:
+  - `mainColor` — select, options: `None (player default)` (default), `Gray (#94a3b8)`, `Red (#f43f5e)`, `Blue (#38bdf8)`, `Green (#22c55e)`, `Yellow (#eab308)`, `Purple (#a855f7)`, `White (#ffffff)`; no `<font>` tag around the primary line when *"None"*.
+  - `transColor` — select, same preset list minus *"None"*; default `Gray (#94a3b8)`.
   - `mainBold` — checkbox, default `true`.
   - `transItalic` — checkbox, default `true`.
-  - `marker` — select: `›` (default), `::`, `|`, `none`.
+  - `marker` — select: `›` (default), `::`, `—`, `none`. (`|` is excluded — it's the style-code separator.)
   - `swapLines` — checkbox, default `false` (secondary below primary).
 - Keep `stremioAddonsConfig` untouched.
 
@@ -60,7 +61,7 @@ Fix: add an explicit Express route `GET /subtitles/:type/:id/:extra?.json` **bef
 `subtitlesHandler` reading `config?.mainLang || 'English [eng]'` defaults stays — required config means values are always sent by Stremio.
 
 ### Style carriage to the .srt endpoint
-Same pattern as video params: subtitlesHandler builds the `.srt` URL with query params `style=<compact code>`, where the code is a deterministic string derived from the five style keys (e.g. `style=%2394a3b8|true|true|%E2%80%BA|false`, values joined by `|`, URL-encoded; use `0`/`1` for booleans, `none` for marker, `swap` etc.). `generateDynamicSubtitle` receives `styleCode` as an argument, parses it into a style config object, includes it in the cache key, and hands the object to `styleRenderer`.
+Same pattern as video params: subtitlesHandler builds the `.srt` URL with query param `style=<compact code>`, a deterministic 6-field join: `mainColor|transColor|mainBold|transItalic|marker|swapLines` — colors as hex or `none` when unset, booleans as `1`/`0`, e.g. `style=none%7C%2394a3b8%7C1%7C1%7C%E2%80%BA%7C0`. `generateDynamicSubtitle` receives `styleCode` as an argument, parses it into a style config object, includes it in the cache key, and hands the object to `styleRenderer`.
 - Unknown/unparsable style codes fall back to defaults (no errors).
 - Website path (`/:config/...`) ignores style (defaults) — backward compatible.
 
