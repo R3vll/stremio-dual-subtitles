@@ -1083,6 +1083,37 @@ test('mergeSubtitles: styled unmatched path renders main line only (no swap/unde
 });
 
 // ============================================================================
+// manifest config
+// ============================================================================
+console.log('\n--- manifest config ---');
+
+test('manifest: version bumped to 1.2.0', () => {
+  assert.strictEqual(manifest.version, '1.2.0');
+});
+
+test('manifest: language + style config keys present', () => {
+  const keys = manifest.config.map(c => c.key);
+  for (const key of ['mainLang', 'transLang', 'mainColor', 'transColor',
+                     'mainBold', 'transItalic', 'marker', 'swapLines']) {
+    assert.ok(keys.includes(key), `missing config key: ${key}`);
+  }
+});
+
+test('manifest: style defaults are safe', () => {
+  const byKey = Object.fromEntries(manifest.config.map(c => [c.key, c]));
+  assert.strictEqual(byKey.mainColor.default, 'None (player default)');
+  assert.strictEqual(byKey.transColor.default, 'Gray (#94a3b8)');
+  assert.strictEqual(byKey.mainBold.default, 'true');
+  assert.strictEqual(byKey.transItalic.default, 'true');
+  assert.strictEqual(byKey.marker.default, '\u203a');
+  assert.strictEqual(byKey.swapLines.default, 'false');
+  for (const key of ['mainColor', 'transColor', 'marker']) {
+    assert.ok(Array.isArray(byKey[key].options) && byKey[key].options.length > 0,
+      `${key} must offer options`);
+  }
+});
+
+// ============================================================================
 // RESULTS
 // ============================================================================
 console.log('\n========================================');

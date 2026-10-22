@@ -124,7 +124,9 @@ const {
 } = require('./languages');
 const { alignAndMatch } = require('./lib/syncEngine');
 const { generateCandidatePairs } = require('./lib/sourceSelection');
-const { parseStyleCode, applyStyle } = require('./lib/styleRenderer');
+const {
+  parseStyleCode, applyStyle, COLOR_PRESETS, SUB_COLOR_PRESETS, MARKER_OPTIONS
+} = require('./lib/styleRenderer');
 
 // Pre-normalized default style: applyStyle runs once per subtitle cue, so
 // avoid parseStyleCode allocations in the hot path.
@@ -173,7 +175,7 @@ const MAX_PAIR_ATTEMPTS = 3;
 
 // Configuration
 const ADDON_NAME = process.env.ADDON_NAME || 'Dual Subtitles';
-const ADDON_VERSION = '1.0.0';
+const ADDON_VERSION = '1.2.0';
 
 
 
@@ -212,6 +214,51 @@ const manifest = {
       options: getLanguageOptions(),
       required: true,
       default: 'Turkish [tur]'
+    },
+    {
+      key: 'mainColor',
+      type: 'select',
+      title: 'Primary Line Color',
+      options: COLOR_PRESETS,
+      required: false,
+      default: 'None (player default)'
+    },
+    {
+      key: 'transColor',
+      type: 'select',
+      title: 'Secondary Line Color',
+      options: SUB_COLOR_PRESETS,
+      required: false,
+      default: 'Gray (#94a3b8)'
+    },
+    {
+      key: 'mainBold',
+      type: 'checkbox',
+      title: 'Bold Primary Line',
+      required: false,
+      default: 'true'
+    },
+    {
+      key: 'transItalic',
+      type: 'checkbox',
+      title: 'Italic Secondary Line',
+      required: false,
+      default: 'true'
+    },
+    {
+      key: 'marker',
+      type: 'select',
+      title: 'Secondary Line Marker',
+      options: MARKER_OPTIONS,
+      required: false,
+      default: '\u203a'
+    },
+    {
+      key: 'swapLines',
+      type: 'checkbox',
+      title: 'Show Secondary Line Above Primary',
+      required: false,
+      default: 'false'
     }
   ]
 };
