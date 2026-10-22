@@ -125,7 +125,7 @@ const {
 const { alignAndMatch } = require('./lib/syncEngine');
 const { generateCandidatePairs } = require('./lib/sourceSelection');
 const {
-  parseStyleCode, applyStyle, COLOR_PRESETS, SUB_COLOR_PRESETS, MARKER_OPTIONS
+  parseStyleCode, applyStyle, buildStyleCode, COLOR_PRESETS, SUB_COLOR_PRESETS, MARKER_OPTIONS
 } = require('./lib/styleRenderer');
 
 // Pre-normalized default style: applyStyle runs once per subtitle cue, so
@@ -737,13 +737,14 @@ function getSubtitle(key) {
  * @param {Array} candidatePairs    output of generateCandidatePairs
  * @param {string} mainLang
  * @param {string} transLang
+ * @param {Object|null}   styleCfg - style object forwarded to mergeSubtitles (null = legacy defaults)
  * @returns {Promise<{
  *   merged: Array, mergedSrt: string, matchRate: number,
  *   mainSub: object, transSub: object, attempts: number,
  *   passedGate: boolean
  * } | null>}
  */
-async function selectAndMergeBestPair(candidatePairs, mainLang, transLang) {
+async function selectAndMergeBestPair(candidatePairs, mainLang, transLang, styleCfg = null) {
   if (!Array.isArray(candidatePairs) || candidatePairs.length === 0) return null;
 
   const parsedCache = new Map();
@@ -778,7 +779,7 @@ async function selectAndMergeBestPair(candidatePairs, mainLang, transLang) {
       continue;
     }
 
-    const merged = mergeSubtitles(mainParsed, transParsed, { mainLang, transLang });
+    const merged = mergeSubtitles(mainParsed, transParsed, { mainLang, transLang, style: styleCfg });
     const matchRate = merged && merged.matchRate != null ? merged.matchRate : 0;
     debugServer.log(`  match rate: ${(matchRate * 100).toFixed(1)}%`);
 
@@ -857,6 +858,8 @@ async function subtitlesHandler({ type, id, extra, config }) {
       videoHash: extra?.videoHash
     };
     const videoQuery = serializeVideoParams(videoParams);
+    // Style travels with the .srt URL (same pattern as video params).
+    const styleCode = buildStyleCode(config || {});
 
     // Fetch all subtitles
     debugServer.log('Fetching subtitles from OpenSubtitles...');
@@ -902,9 +905,13 @@ async function subtitlesHandler({ type, id, extra, config }) {
       best.trans.id
     ].join('/');
 
+    const queryParts = [];
+    if (videoQuery) queryParts.push(videoQuery);
+    queryParts.push(`style=${encodeURIComponent(styleCode)}`);
+
     const finalSubtitles = [{
       id: `dual-${best.main.id}-${best.trans.id}`,
-      url: `{{ADDON_URL}}/subs/${dynamicParams}.srt${videoQuery ? `?${videoQuery}` : ''}`,
+      url: `{{ADDON_URL}}/subs/${dynamicParams}.srt?${queryParts.join('&')}`,
       lang: mainLang,
       SubtitlesName:
         `Dual (${mainLang.toUpperCase()}+${transLang.toUpperCase()}) - ` +
@@ -936,6 +943,10 @@ builder.defineSubtitlesHandler(subtitlesHandler);
  * repeat hit on the same Vercel instance skips fetch + parse + merge
  * entirely — even ahead of Vercel's edge cache (which ALSO caches via
  * Cache-Control headers in server.js routes).
+ *
+ * @param {string|null} styleCode - 6-field style code from the .srt URL
+ *        query; null = omitted = legacy defaults. The code is included
+ *        in the cache key.
  */
 async function generateDynamicSubtitle(
   type,
@@ -946,7 +957,8 @@ async function generateDynamicSubtitle(
   transLang,
   mainSubId,
   transSubId,
-  videoParams = {}
+  videoParams = {},
+  styleCode = null
 ) {
   debugServer.log('Dynamic subtitle generation:', { type, imdbId, mainLang, transLang });
 
@@ -954,7 +966,7 @@ async function generateDynamicSubtitle(
   const cacheKey =
     `${imdbId}_${season || ''}_${episode || ''}` +
     `_${mainLang}_${transLang}_${mainSubId}_${transSubId}` +
-    `_${videoCacheFragment || ''}`;
+    `_${videoCacheFragment || ''}_${styleCode || ''}`;
   const cached = getSubtitle(cacheKey);
   if (cached) {
     debugServer.log(`Cache hit (in-instance): ${cacheKey}`);
@@ -1014,7 +1026,12 @@ async function generateDynamicSubtitle(
 
     if (orderedPairs.length === 0) return null;
 
-    const best = await selectAndMergeBestPair(orderedPairs, mainLang, transLang);
+    const best = await selectAndMergeBestPair(
+      orderedPairs,
+      mainLang,
+      transLang,
+      styleCode == null ? null : parseStyleCode(styleCode)
+    );
     if (!best || !best.merged || best.merged.length === 0) {
       debugServer.warn('No usable merged subtitle from any pair');
       return null;

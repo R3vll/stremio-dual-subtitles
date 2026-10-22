@@ -43,6 +43,18 @@ function test(name, fn) {
   }
 }
 
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log(`  PASS  ${name}`);
+  } catch (err) {
+    failed++;
+    console.error(`  FAIL  ${name}`);
+    console.error(`        ${err.message}`);
+  }
+}
+
 // ============================================================================
 // parseTimeToMs
 // ============================================================================
@@ -1116,10 +1128,76 @@ test('manifest: style defaults are safe', () => {
 // ============================================================================
 // RESULTS
 // ============================================================================
-console.log('\n========================================');
-console.log(`  Results: ${passed} passed, ${failed} failed`);
-console.log('========================================\n');
+(async () => {
+  // ---------------------------------------------------------------------------
+  // subtitles URL plumbing (style + video params)
+  // ---------------------------------------------------------------------------
+  console.log('\n--- subtitles URL plumbing ---');
 
-if (failed > 0) {
-  process.exit(1);
-}
+  const axiosMod = require('axios');
+  const { subtitlesHandler } = require('./addon');
+  const { parseStyleCode: parseStyleCodeForPlumbing } = require('./lib/styleRenderer');
+
+  await testAsync('subtitlesHandler: .srt URL carries style param and video params', async () => {
+    const origGet = axiosMod.get;
+    axiosMod.get = async () => ({
+      data: {
+        subtitles: [
+          { id: '111', url: 'https://example.com/main.srt', lang: 'eng', downloads: 500 },
+          { id: '222', url: 'https://example.com/trans.srt', lang: 'tur', downloads: 400 }
+        ]
+      }
+    });
+
+    const result = await subtitlesHandler({
+      type: 'movie',
+      id: 'tt0111161',
+      extra: { filename: 'Shawshank.1994.mp4' },
+      config: {
+        mainLang: 'English [eng]',
+        transLang: 'Turkish [tur]',
+        mainColor: 'Red (#f43f5e)',
+        mainBold: 'false'
+      }
+    });
+    axiosMod.get = origGet;
+
+    assert.strictEqual(result.subtitles.length, 1);
+    const url = result.subtitles[0].url;
+    // imdbId: 'tt0111161'.replace('tt','') === '0111161' (first occurrence only)
+    assert.ok(url.startsWith('{{ADDON_URL}}/subs/movie/0111161/0/0/eng/tur/111/222.srt?'), `unexpected path: ${url}`);
+    const params = new URLSearchParams(url.split('?')[1]);
+    assert.ok(params.has('style'), 'style param missing');
+    const styleCfg = parseStyleCodeForPlumbing(params.get('style'));
+    assert.strictEqual(styleCfg.mainColor, '#f43f5e');
+    assert.strictEqual(styleCfg.mainBold, false);
+    assert.strictEqual(params.get('filename'), 'Shawshank.1994.mp4');
+  });
+
+  await testAsync('subtitlesHandler: defaults used when config has only languages', async () => {
+    const origGet = axiosMod.get;
+    axiosMod.get = async () => ({
+      data: { subtitles: [
+        { id: '111', url: 'https://example.com/main.srt', lang: 'eng', downloads: 500 },
+        { id: '222', url: 'https://example.com/trans.srt', lang: 'tur', downloads: 400 }
+      ] }
+    });
+    const result = await subtitlesHandler({
+      type: 'movie', id: 'tt0111161', extra: {},
+      config: { mainLang: 'English [eng]', transLang: 'Turkish [tur]' }
+    });
+    axiosMod.get = origGet;
+    const params = new URLSearchParams(result.subtitles[0].url.split('?')[1]);
+    const styleCfg = parseStyleCodeForPlumbing(params.get('style'));
+    assert.strictEqual(styleCfg.transColor, '#94a3b8');
+    assert.strictEqual(styleCfg.mainBold, true);
+  });
+
+  console.log('\n========================================');
+  console.log(`  Results: ${passed} passed, ${failed} failed`);
+  console.log('========================================\n');
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+})();
