@@ -1020,6 +1020,58 @@ test('parseStyleCode: whitespace around fields is ignored', () => {
 });
 
 // ============================================================================
+// mergeSubtitles + style wiring
+// ============================================================================
+console.log('\n--- mergeSubtitles style wiring ---');
+
+test('mergeSubtitles: default output byte-identical to legacy formatting', () => {
+  const main = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'one' },
+    { id: '2', startTime: '00:00:03,000', endTime: '00:00:04,000', text: 'two' }
+  ];
+  const trans = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'uno' }
+  ];
+  const merged = mergeSubtitles(main, trans, { mainLang: 'eng', transLang: 'tur' });
+  assert.strictEqual(
+    merged[0].text,
+    "<b>one</b>\n\u203a <i><font color='#94a3b8'>uno</font></i>"
+  );
+  assert.strictEqual(merged[1].text, '<b>two</b>');
+});
+
+test('mergeSubtitles: style option changes rendering', () => {
+  const main = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'one' }
+  ];
+  const trans = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'uno' }
+  ];
+  const merged = mergeSubtitles(main, trans, {
+    mainLang: 'eng', transLang: 'tur',
+    style: { mainBold: false, transItalic: false, marker: 'none', transColor: '', swapLines: true }
+  });
+  assert.strictEqual(merged[0].text, 'uno\none');
+});
+
+test('mergeSubtitles: style code string is accepted too', () => {
+  const main = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'one' }
+  ];
+  const trans = [
+    { id: '1', startTime: '00:00:01,000', endTime: '00:00:02,000', text: 'uno' }
+  ];
+  const merged = mergeSubtitles(main, trans, {
+    mainLang: 'eng', transLang: 'tur',
+    style: 'none|#94a3b8|1|1|\u203a|1'
+  });
+  assert.strictEqual(
+    merged[0].text,
+    "\u203a <i><font color='#94a3b8'>uno</font></i>\n<b>one</b>"
+  );
+});
+
+// ============================================================================
 // RESULTS
 // ============================================================================
 console.log('\n========================================');

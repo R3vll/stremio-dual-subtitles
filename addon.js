@@ -124,6 +124,11 @@ const {
 } = require('./languages');
 const { alignAndMatch } = require('./lib/syncEngine');
 const { generateCandidatePairs } = require('./lib/sourceSelection');
+const { parseStyleCode, applyStyle } = require('./lib/styleRenderer');
+
+// Pre-normalized default style: applyStyle runs once per subtitle cue, so
+// avoid parseStyleCode allocations in the hot path.
+const DEFAULT_STYLE_CLONE = { ...parseStyleCode(null) };
 
 // Optional video-matching parameters (forwarded from Stremio extras).
 // These help OpenSubtitles pick the right release variant for the exact
@@ -484,9 +489,6 @@ function htmlEncodeSrt(text) {
     .replace(/>/g, '&gt;');
 }
 
-/** Muted color for secondary line; players that ignore <font> still have <b> + › marker. */
-const DUAL_SUB_TRANS_COLOR = '#94a3b8';
-
 /**
  * Merge two subtitle arrays into one, aligning the secondary track to the
  * primary track's timebase before matching.
@@ -520,7 +522,8 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
     matchThresholdMs = 1500,
     allowMultiTrans = true,
     enableOffset = true,
-    enableDrift = true
+    enableDrift = true,
+    style = null
   } = opts;
 
   const mainTimed = [];
@@ -563,6 +566,7 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
     if (!cleanMainText) continue;
 
     let mergedText;
+    const styleCfg = style == null ? DEFAULT_STYLE_CLONE : parseStyleCode(style);
     const transIdxs = matches.get(mi);
     if (transIdxs && transIdxs.length > 0) {
       const transParts = [];
@@ -579,13 +583,12 @@ function mergeSubtitles(mainSubs, transSubs, options = {}) {
         const cleanTransText = transParts.join(transJoiner);
         const encMain = htmlEncodeSrt(cleanMainText);
         const encTrans = htmlEncodeSrt(cleanTransText);
-        mergedText =
-          `<b>${encMain}</b>\n\u203a <i><font color='${DUAL_SUB_TRANS_COLOR}'>${encTrans}</font></i>`;
+        mergedText = applyStyle(encMain, encTrans, styleCfg);
       }
     }
 
     if (mergedText === undefined) {
-      mergedText = `<b>${htmlEncodeSrt(cleanMainText)}</b>`;
+      mergedText = applyStyle(htmlEncodeSrt(cleanMainText), '', styleCfg);
     }
 
     if (!mergedText) continue;
