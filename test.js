@@ -1007,6 +1007,18 @@ test('preset/marker option lists are exposed for the manifest', () => {
   assert.ok(MARKER_OPTIONS.includes('\u203a') && !MARKER_OPTIONS.includes('|'));
 });
 
+test('applyStyle: null main text is guarded (no literal "null")', () => {
+  assert.strictEqual(applyStyle(null, 'Yo'), "<b></b>\n\u203a <i><font color='#94a3b8'>Yo</font></i>");
+});
+
+test('parseStyleCode: whitespace around fields is ignored', () => {
+  const s = parseStyleCode(' #00ff00 | #ff0000 |1|1| :: | 1 ');
+  assert.strictEqual(s.mainColor, '#00ff00');
+  assert.strictEqual(s.transColor, '#ff0000');
+  assert.strictEqual(s.marker, '::');
+  assert.strictEqual(s.swapLines, true);
+});
+
 // ============================================================================
 // RESULTS
 // ============================================================================
