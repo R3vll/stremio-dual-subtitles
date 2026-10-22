@@ -100,7 +100,7 @@ put(key, srt)             // write-through: mem + fire-and-forget L2 + L3 (local
 
 ## 6. Component 4 — Quality fixes
 
-1. **Rate-limit leak:** sweep `rateLimitStore` every RATE_LIMIT_WINDOW_MS — delete entries past `resetAt` ( piggybacked on the existing middleware tick, no timer setup complexity beyond one `setInterval` with `.unref()`).
+1. **Rate-limit leak:** sweep `rateLimitStore` every RATE_LIMIT_WINDOW_MS — delete entries past `resetAt` (piggybacked on the existing middleware tick, via one `setInterval` with `.unref()`).
 2. **Version sync:** manifest `ADDON_VERSION` → `1.2.0` (CHANGELOG next entry will document the feature).
 3. **Keep-alive agent:** shared `https.Agent({ keepAlive: true, maxSockets: 32 })` + `http.Agent` equivalent passed as axios default agent in addon.js for OpenSubtitles and subtitle-file requests.
 
