@@ -891,6 +891,123 @@ test('alignAndMatch: piecewise-drifted track matches better with local offsets e
 });
 
 // ============================================================================
+// styleRenderer
+// ============================================================================
+console.log('\n--- styleRenderer ---');
+
+const {
+  DEFAULT_STYLE,
+  COLOR_PRESETS,
+  MARKER_OPTIONS,
+  parseStyleCode,
+  buildStyleCode,
+  applyStyle
+} = require('./lib/styleRenderer');
+
+test('applyStyle: legacy defaults are byte-identical to v1 formatting', () => {
+  assert.strictEqual(
+    applyStyle('Hello', 'World'),
+    "<b>Hello</b>\n\u203a <i><font color='#94a3b8'>World</font></i>"
+  );
+});
+
+test('applyStyle: empty trans text renders main line only', () => {
+  assert.strictEqual(applyStyle('Hello', ''), '<b>Hello</b>');
+  assert.strictEqual(applyStyle('Hello', null), '<b>Hello</b>');
+});
+
+test('applyStyle: custom toggles and marker, no bold', () => {
+  // Marker follows the v1 tag order (outside <i>/<font>, same as the
+  // legacy-defaults test); italic toggled off here, bold toggled off.
+  assert.strictEqual(
+    applyStyle('Hi', 'Yo', { mainBold: false, transItalic: false, marker: '::', transColor: '#ff0000' }),
+    "Hi\n:: <font color='#ff0000'>Yo</font>"
+  );
+});
+
+test('applyStyle: swapLines puts secondary line on top', () => {
+  assert.strictEqual(
+    applyStyle('Hi', 'Yo', { swapLines: true }),
+    "\u203a <i><font color='#94a3b8'>Yo</font></i>\n<b>Hi</b>"
+  );
+});
+
+test('applyStyle: mainColor wraps primary line in font tag', () => {
+  assert.strictEqual(
+    applyStyle('Hi', 'Yo', { mainColor: '#00ff00' }),
+    "<font color='#00ff00'><b>Hi</b></font>\n\u203a <i><font color='#94a3b8'>Yo</font></i>"
+  );
+});
+
+test('applyStyle: preset label extracts hex (config value from Stremio)', () => {
+  assert.strictEqual(
+    applyStyle('Hi', 'Yo', { transColor: 'Red (#f43f5e)' }),
+    "<b>Hi</b>\n\u203a <i><font color='#f43f5e'>Yo</font></i>"
+  );
+});
+
+test('applyStyle: invalid color falls back to legacy gray, not raw injection', () => {
+  assert.ok(applyStyle('Hi', 'Yo', { transColor: '<script>' }).includes('#94a3b8'));
+  assert.ok(!applyStyle('Hi', 'Yo', { transColor: '<script>' }).includes('<script>'));
+});
+
+test('applyStyle: no marker renders without prefix', () => {
+  assert.strictEqual(
+    applyStyle('Hi', 'Yo', { marker: 'none', transColor: '', transItalic: false }),
+    "<b>Hi</b>\nYo"
+  );
+});
+
+test('buildStyleCode + parseStyleCode: default config roundtrip', () => {
+  const code = buildStyleCode({});
+  assert.strictEqual(code, 'none|#94a3b8|1|1|\u203a|0');
+  const s = parseStyleCode(code);
+  assert.strictEqual(s.mainColor, '');
+  assert.strictEqual(s.transColor, '#94a3b8');
+  assert.strictEqual(s.mainBold, true);
+  assert.strictEqual(s.transItalic, true);
+  assert.strictEqual(s.marker, '\u203a');
+  assert.strictEqual(s.swapLines, false);
+});
+
+test('buildStyleCode + parseStyleCode: full custom config roundtrip', () => {
+  const code = buildStyleCode({
+    mainColor: '#00ff00', transColor: '#ff0000', mainBold: false,
+    transItalic: false, marker: '::', swapLines: true
+  });
+  assert.strictEqual(code, '#00ff00|#ff0000|0|0|::|1');
+  const s = parseStyleCode(code);
+  assert.strictEqual(s.mainColor, '#00ff00');
+  assert.strictEqual(s.transColor, '#ff0000');
+  assert.strictEqual(s.mainBold, false);
+  assert.strictEqual(s.transItalic, false);
+  assert.strictEqual(s.marker, '::');
+  assert.strictEqual(s.swapLines, true);
+});
+
+test('parseStyleCode: invalid fields fall back to defaults', () => {
+  const s = parseStyleCode('zzz|zzz|9|9|<script>|9');
+  assert.strictEqual(s.transColor, '#94a3b8', 'invalid color -> default gray');
+  assert.strictEqual(s.mainBold, true);
+  assert.strictEqual(s.transItalic, true);
+  assert.strictEqual(s.marker, '\u203a');
+  assert.strictEqual(s.swapLines, false);
+});
+
+test('parseStyleCode: null/empty code returns defaults', () => {
+  const s = parseStyleCode(null);
+  assert.strictEqual(s.transColor, '#94a3b8');
+  assert.strictEqual(s.mainBold, true);
+  const e = parseStyleCode('');
+  assert.strictEqual(e.transColor, '#94a3b8');
+});
+
+test('preset/marker option lists are exposed for the manifest', () => {
+  assert.ok(Array.isArray(COLOR_PRESETS) && COLOR_PRESETS.length >= 6);
+  assert.ok(MARKER_OPTIONS.includes('\u203a') && !MARKER_OPTIONS.includes('|'));
+});
+
+// ============================================================================
 // RESULTS
 // ============================================================================
 console.log('\n========================================');
