@@ -310,12 +310,16 @@ app.get('/subs/:type/:imdbId/:season/:episode/:mainLang/:transLang/:mainSubId/:t
     videoSize: req.query && req.query.videoSize ? req.query.videoSize : undefined,
     videoHash: req.query && req.query.videoHash ? req.query.videoHash : undefined
   };
-  
+
+  // Style code rides in the query (see lib/styleRenderer.js docs).
+  // Website-configured installs don't send it -> undefined -> defaults used.
+  const styleCode = req.query && typeof req.query.style === 'string' ? req.query.style : undefined;
+
   debugServer.log(`Dynamic subtitle request: ${type}/${imdbId} ${mainLang}+${transLang}`);
   
   try {
     const content = await generateDynamicSubtitle(
-      type, imdbId, season, episode, mainLang, transLang, mainSubId, transSubId, videoParams
+      type, imdbId, season, episode, mainLang, transLang, mainSubId, transSubId, videoParams, styleCode
     );
     
     if (!content) {
