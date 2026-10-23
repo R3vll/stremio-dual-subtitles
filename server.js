@@ -127,6 +127,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Periodically drop expired IP buckets so the Map doesn't grow forever
+// (long-running local instances previously leaked memory here).
+function sweepRateLimitStore() {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitStore) {
+    if (now > entry.resetAt) rateLimitStore.delete(ip);
+  }
+}
+const rateLimitSweeperTimer = setInterval(sweepRateLimitStore, RATE_LIMIT_WINDOW_MS);
+rateLimitSweeperTimer.unref(); // don't keep the process alive just for sweeping
+
 // ============================================================================
 // API ENDPOINTS
 // ============================================================================
@@ -540,4 +551,4 @@ if (!process.env.VERCEL) {
 
 // Export for Vercel
 module.exports = app;
-module.exports._test = { parseConfigParam, getClientIP };
+module.exports._test = { parseConfigParam, getClientIP, sweepRateLimitStore, rateLimitStore };

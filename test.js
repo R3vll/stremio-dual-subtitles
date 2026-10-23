@@ -1324,6 +1324,25 @@ test('parseConfigParam: garbage/invalid returns null', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
+  // ============================================================================
+  // rate limiter sweep
+  // ============================================================================
+  console.log('\n--- rate limiter sweep ---');
+
+  await testAsync('rate limiter: sweepRateLimitStore drops expired entries only', async () => {
+    const { sweepRateLimitStore, rateLimitStore } = serverApp._test;
+    assert.strictEqual(typeof sweepRateLimitStore, 'function', 'sweepRateLimitStore missing');
+    assert.ok(rateLimitStore instanceof Map, 'rateLimitStore Map missing');
+
+    const now = Date.now();
+    rateLimitStore.set('203.0.113.77', { count: 5, resetAt: now - 1000 }); // expired
+    rateLimitStore.set('198.51.100.9', { count: 2, resetAt: now + 60000 }); // active
+    sweepRateLimitStore();
+    assert.ok(!rateLimitStore.has('203.0.113.77'), 'expired entry must be deleted');
+    assert.ok(rateLimitStore.has('198.51.100.9'), 'active entry must survive');
+    rateLimitStore.delete('198.51.100.9');
+  });
+
   console.log('\n========================================');
   console.log(`  Results: ${passed} passed, ${failed} failed`);
   console.log('========================================\n');
