@@ -686,43 +686,22 @@ function formatSrt(subtitleArray) {
   }
 }
 
-// In-memory cache for merged subtitles
-const subtitleCache = new Map();
-const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+// Tiered cache for merged subtitles (memory → Upstash Redis → disk)
+const subtitleCache = require('./lib/subtitleCache');
 
 /**
- * Store subtitle in cache and return data URL.
+ * Store subtitle in the tiered cache and return the key.
  */
 function storeSubtitle(key, srtContent) {
-  // Clean old entries
-  const now = Date.now();
-  for (const [k, v] of subtitleCache.entries()) {
-    if (now - v.timestamp > CACHE_TTL) {
-      subtitleCache.delete(k);
-    }
-  }
-
-  subtitleCache.set(key, {
-    content: srtContent,
-    timestamp: now
-  });
-
+  subtitleCache.put(key, srtContent);
   return key;
 }
 
 /**
- * Get subtitle from cache.
+ * Get subtitle from the tiered cache (async: may hit Redis/disk).
  */
-function getSubtitle(key) {
-  const entry = subtitleCache.get(key);
-  if (!entry) return null;
-  
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    subtitleCache.delete(key);
-    return null;
-  }
-  
-  return entry.content;
+async function getSubtitle(key) {
+  return subtitleCache.get(key);
 }
 
 /**
@@ -967,7 +946,7 @@ async function generateDynamicSubtitle(
     `${imdbId}_${season || ''}_${episode || ''}` +
     `_${mainLang}_${transLang}_${mainSubId}_${transSubId}` +
     `_${videoCacheFragment || ''}_${styleCode || ''}`;
-  const cached = getSubtitle(cacheKey);
+  const cached = await getSubtitle(cacheKey);
   if (cached) {
     debugServer.log(`Cache hit (in-instance): ${cacheKey}`);
     return cached;

@@ -278,19 +278,19 @@ app.get('/sitemap.xml', (req, res) => {
 // ============================================================================
 
 // Serve cached subtitles (legacy/backup)
-app.get('/subtitles/:filename', (req, res) => {
+app.get('/subtitles/:filename', async (req, res) => {
   const filename = req.params.filename;
   const cacheKey = filename.replace('.srt', '');
-  
-  const content = getSubtitle(cacheKey);
-  
+
+  const content = await getSubtitle(cacheKey);
+
   if (!content) {
     debugServer.warn(`Subtitle not found in cache: ${cacheKey}`);
     return res.status(404).send('Subtitle not found or expired');
   }
-  
+
   trackSubtitleServed();
-  
+
   res.setHeader('Content-Type', 'text/srt; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=21600');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);

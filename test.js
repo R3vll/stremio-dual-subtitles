@@ -1126,6 +1126,36 @@ test('manifest: style defaults are safe', () => {
 });
 
 // ============================================================================
+// subtitleCache (tiered) — sync surface
+// ============================================================================
+console.log('\n--- subtitleCache sync ---');
+
+const subtitleCacheMod = require('./lib/subtitleCache');
+
+test('subtitleCache: put/get roundtrip in memory', () => {
+  subtitleCacheMod.clearMem();
+  subtitleCacheMod.put('testkey1', 'A\nB');
+  const entry = subtitleCacheMod._test.memCache.get('testkey1');
+  assert.ok(entry && entry.content === 'A\nB' && typeof entry.timestamp === 'number');
+});
+
+test('subtitleCache: disk tier flag honors env (auto/on/off/Vercel)', () => {
+  const origV = process.env.VERCEL;
+  const origD = process.env.SUBTITLE_DISK_CACHE;
+  delete process.env.VERCEL;
+  delete process.env.SUBTITLE_DISK_CACHE;
+  assert.strictEqual(subtitleCacheMod._test.isDiskEnabled(), true, 'local default on');
+  process.env.VERCEL = '1';
+  assert.strictEqual(subtitleCacheMod._test.isDiskEnabled(), false, 'vercel auto-off');
+  process.env.SUBTITLE_DISK_CACHE = 'on';
+  assert.strictEqual(subtitleCacheMod._test.isDiskEnabled(), true, 'explicit on wins');
+  process.env.SUBTITLE_DISK_CACHE = 'off';
+  assert.strictEqual(subtitleCacheMod._test.isDiskEnabled(), false, 'explicit off wins');
+  if (origV === undefined) delete process.env.VERCEL; else process.env.VERCEL = origV;
+  if (origD === undefined) delete process.env.SUBTITLE_DISK_CACHE; else process.env.SUBTITLE_DISK_CACHE = origD;
+});
+
+// ============================================================================
 // RESULTS
 // ============================================================================
 (async () => {
@@ -1191,6 +1221,53 @@ test('manifest: style defaults are safe', () => {
     const styleCfg = parseStyleCodeForPlumbing(params.get('style'));
     assert.strictEqual(styleCfg.transColor, '#94a3b8');
     assert.strictEqual(styleCfg.mainBold, true);
+  });
+
+  // ============================================================================
+  // subtitleCache (tiered) — async get/put + disk tier
+  // ============================================================================
+  console.log('\n--- subtitleCache async ---');
+
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+
+  await testAsync('subtitleCache: memory get hit/miss', async () => {
+    subtitleCacheMod.clearMem();
+    assert.strictEqual(await subtitleCacheMod.get('async_missing'), null, 'miss -> null');
+    subtitleCacheMod.put('async_hit', 'mem-content');
+    assert.strictEqual(await subtitleCacheMod.get('async_hit'), 'mem-content');
+  });
+
+  await testAsync('subtitleCache: disk tier write/read/expiry with dir override', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dualsub-cache-'));
+    const origDir = process.env.SUBTITLE_DISK_DIR;
+    const origAuto = process.env.SUBTITLE_DISK_CACHE;
+    process.env.SUBTITLE_DISK_DIR = tmp;
+    process.env.SUBTITLE_DISK_CACHE = 'on';
+
+    // same key -> same sha1-based path
+    const p1 = subtitleCacheMod._test.diskPath('cachecheck');
+    const p2 = subtitleCacheMod._test.diskPath('cachecheck');
+    assert.strictEqual(p1, p2);
+    assert.ok(p1.startsWith(tmp) && p1.endsWith('.srt'), `path shape: ${p1}`);
+
+    subtitleCacheMod.clearMem();
+    subtitleCacheMod.put('cachecheck', 'disk-content');
+    assert.ok(fs.existsSync(p1), 'file written');
+    assert.strictEqual(await subtitleCacheMod.get('cachecheck'), 'disk-content');
+
+    // backdate mtime beyond TTL -> expired & removed
+    const TTL_MS = 6 * 60 * 60 * 1000;
+    const old = new Date(Date.now() - TTL_MS - 1000);
+    fs.utimesSync(p1, old, old);
+    subtitleCacheMod.clearMem();
+    assert.strictEqual(await subtitleCacheMod.get('cachecheck'), null, 'expired on disk');
+    assert.ok(!fs.existsSync(p1), 'expired file removed');
+
+    if (origDir === undefined) delete process.env.SUBTITLE_DISK_DIR; else process.env.SUBTITLE_DISK_DIR = origDir;
+    if (origAuto === undefined) delete process.env.SUBTITLE_DISK_CACHE; else process.env.SUBTITLE_DISK_CACHE = origAuto;
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 
   console.log('\n========================================');
