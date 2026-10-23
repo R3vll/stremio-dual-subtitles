@@ -344,21 +344,67 @@ app.get('/:config/configure', (req, res) => {
   res.redirect('/configure');
 });
 
+// Sentinel used internally by the config parser.
+const INVALID_CONFIG = Symbol('invalid-config');
+
+function tryDecode(raw) {
+  // Express :params are already decoded; a second decode pass must not
+  // throw on bare '%' characters. Returns '' when it throws.
+  try {
+    return decodeURIComponent(raw);
+  } catch (_) {
+    return '';
+  }
+}
+
+function tryParseJsonConfig(decoded) {
+  if (!decoded || !decoded.trim().startsWith('{')) return INVALID_CONFIG;
+  try {
+    const obj = JSON.parse(decoded);
+    if (obj && typeof obj === 'object' && obj.mainLang && obj.transLang) return obj;
+  } catch (_) {
+    // not JSON (or broken JSON) — fall through
+  }
+  return decoded; // decoded string, maybe pipe form — caller decides
+}
+
+// Parse the config path segment. Two encodings are supported:
+//  1) compact : "English [eng]|Turkish [tur]"  (website-generated URLs)
+//  2) native  : URL-encoded JSON {"mainLang": "...", ...}  (Stremio builds
+//               this when the user configures the addon inside the app)
+// Also tolerates already-decoded input (Express :params arrive decoded).
+// Returns a config object (languages + optional style keys) or null.
+function parseConfigParam(raw) {
+  if (raw == null || raw === '') return null;
+  const rawStr = String(raw);
+
+  // 1) JSON form (encoded or already decoded).
+  const jsonOutcome = tryParseJsonConfig(tryDecode(rawStr));
+  if (jsonOutcome !== INVALID_CONFIG && typeof jsonOutcome === 'object') {
+    return jsonOutcome;
+  }
+
+  // 2) Compact form on the raw string, then on the decoded string.
+  for (const candidate of [rawStr, tryDecode(rawStr)]) {
+    const [mainLang, transLang] = candidate.split('|');
+    if (mainLang && transLang) return { mainLang, transLang };
+  }
+
+  return null;
+}
+
 // Configuration-specific manifest
 app.get('/:config/manifest.json', (req, res) => {
   try {
-    const configParam = decodeURIComponent(req.params.config);
-    const [mainLang, transLang] = configParam.split('|');
-    
-    if (!mainLang || !transLang) {
+    const parsed = parseConfigParam(req.params.config);
+    if (!parsed) {
       return res.status(400).json({ error: 'Invalid configuration' });
     }
 
-    const mainCode = parseLangCode(mainLang);
-    const transCode = parseLangCode(transLang);
+    const mainCode = parseLangCode(parsed.mainLang);
+    const transCode = parseLangCode(parsed.transLang);
     const baseUrl = getExternalUrl(req);
 
-    // Create configured manifest
     const configuredManifest = {
       ...manifest,
       id: `${manifest.id}.${mainCode}.${transCode}`,
@@ -380,23 +426,20 @@ app.get('/:config/manifest.json', (req, res) => {
 // Configuration-specific subtitles handler
 app.get('/:config/subtitles/:type/:id/:extra?.json', async (req, res) => {
   try {
-    const configParam = decodeURIComponent(req.params.config);
-    const [mainLang, transLang] = configParam.split('|');
-    
-    if (!mainLang || !transLang) {
+    const parsed = parseConfigParam(req.params.config);
+    if (!parsed) {
       return res.status(400).json({ subtitles: [] });
     }
 
     const { type, id } = req.params;
     const extra = req.params.extra ? parseExtra(req.params.extra) : {};
 
-    const config = {
-      mainLang,
-      transLang
-    };
+    // parsed carries mainLang/transLang plus any style keys; the handler
+    // reads exactly what it needs and styleRenderer clamps values.
+    const config = parsed;
 
-    trackSubtitleRequest(parseLangCode(mainLang), parseLangCode(transLang), type, id);
-    debugServer.log(`Subtitle request: ${type}/${id}, langs: ${parseLangCode(mainLang)}+${parseLangCode(transLang)}`);
+    trackSubtitleRequest(parseLangCode(parsed.mainLang), parseLangCode(parsed.transLang), type, id);
+    debugServer.log(`Subtitle request: ${type}/${id}, langs: ${parseLangCode(parsed.mainLang)}+${parseLangCode(parsed.transLang)}`);
 
     const result = await subtitlesHandler({ type, id, extra, config });
     
@@ -493,3 +536,4 @@ if (!process.env.VERCEL) {
 
 // Export for Vercel
 module.exports = app;
+module.exports._test = { parseConfigParam, getClientIP };

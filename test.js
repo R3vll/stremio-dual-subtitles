@@ -7,6 +7,9 @@
 
 const assert = require('assert');
 
+// Never bind ports in tests (server.js listens unless VERCEL is set).
+process.env.VERCEL = '1';
+
 const {
   _test: {
     parseTimeToMs,
@@ -1161,6 +1164,49 @@ test('subtitleCache: put skips redis for content over REDIS_MAX_BYTES (utf8 byte
   const bigStr = '日'.repeat(200000); // 200k chars, ~600KB utf8
   assert.ok(Buffer.byteLength(bigStr, 'utf8') > REDIS_MAX_BYTES, 'fixture exceeds cap in bytes');
   assert.ok(bigStr.length < REDIS_MAX_BYTES, 'fixture is UNDER cap in chars (guard must use bytes)');
+});
+
+// ============================================================================
+// server config parsing (native/JSON + legacy pipe forms)
+// ============================================================================
+console.log('\n--- server config parsing ---');
+
+const serverApp = require('./server');
+const { parseConfigParam } = serverApp._test;
+
+test('parseConfigParam: compact pipe form (website URLs)', () => {
+  assert.deepStrictEqual(
+    parseConfigParam(encodeURIComponent('English [eng]|Turkish [tur]')),
+    { mainLang: 'English [eng]', transLang: 'Turkish [tur]' }
+  );
+  // already-decoded input works too (Express decodes :params)
+  assert.deepStrictEqual(
+    parseConfigParam('English [eng]|Turkish [tur]'),
+    { mainLang: 'English [eng]', transLang: 'Turkish [tur]' }
+  );
+});
+
+test('parseConfigParam: native JSON form (Stremio in-app config)', () => {
+  const cfg = {
+    mainLang: 'English [eng]',
+    transLang: 'Turkish [tur]',
+    mainColor: 'Red (#f43f5e)',
+    mainBold: 'false'
+  };
+  assert.deepStrictEqual(
+    parseConfigParam(encodeURIComponent(JSON.stringify(cfg))),
+    cfg
+  );
+  assert.deepStrictEqual(parseConfigParam(JSON.stringify(cfg)), cfg);
+});
+
+test('parseConfigParam: garbage/invalid returns null', () => {
+  assert.strictEqual(parseConfigParam('plain-garbage-no-pipe'), null);
+  assert.strictEqual(parseConfigParam(''), null);
+  assert.strictEqual(parseConfigParam(undefined), null);
+  assert.strictEqual(parseConfigParam('{broken json'), null);
+  // JSON without both language keys is invalid
+  assert.strictEqual(parseConfigParam(JSON.stringify({ mainLang: 'English [eng]' })), null);
 });
 
 // ============================================================================
