@@ -7,6 +7,15 @@
 const path = require('path');
 const { addonBuilder } = require('stremio-addon-sdk');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
+
+// Reuse TLS connections/sockets across OpenSubtitles calls — a measurable
+// cold-start win on serverless, worthwhile locally too.
+const keepAliveHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+const keepAliveHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 32 });
+axios.defaults.httpAgent = keepAliveHttpAgent;
+axios.defaults.httpsAgent = keepAliveHttpsAgent;
 const pako = require('pako');
 const sanitize = require('sanitize-html');
 const { debugServer, sanitizeForLogging } = require('./lib/debug');
