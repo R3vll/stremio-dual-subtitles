@@ -512,6 +512,20 @@ A: Open an issue on [GitHub](https://github.com/ummugulsunn/stremio-dual-subtitl
 
 ## Changelog
 
+### v1.2.0 (2026-10-23)
+
+**Added**
+- Native in-app configuration: language selection and subtitle styling inside Stremio, no external redirect
+- Custom subtitle styling: line colors, bold/italic, secondary-line marker, line-order swap
+- Tiered subtitle caching: in-memory → Upstash Redis → disk (env-aware, configurable)
+
+**Fixed**
+- `{{ADDON_URL}}` placeholder not resolved for native-config installs (blank subtitles)
+- Rate-limit store kept expired IP entries forever (memory leak); now swept
+
+**Changed**
+- Keep-alive HTTP agents for upstream subtitle requests
+
 ### v1.1.0 (2026-02-04)
 
 **Added**
