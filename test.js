@@ -1155,6 +1155,14 @@ test('subtitleCache: disk tier flag honors env (auto/on/off/Vercel)', () => {
   if (origD === undefined) delete process.env.SUBTITLE_DISK_CACHE; else process.env.SUBTITLE_DISK_CACHE = origD;
 });
 
+test('subtitleCache: put skips redis for content over REDIS_MAX_BYTES (utf8 bytes)', () => {
+  const { REDIS_MAX_BYTES } = subtitleCacheMod._test;
+  assert.strictEqual(typeof REDIS_MAX_BYTES, 'number', 'REDIS_MAX_BYTES exposed for tests');
+  const bigStr = '日'.repeat(200000); // 200k chars, ~600KB utf8
+  assert.ok(Buffer.byteLength(bigStr, 'utf8') > REDIS_MAX_BYTES, 'fixture exceeds cap in bytes');
+  assert.ok(bigStr.length < REDIS_MAX_BYTES, 'fixture is UNDER cap in chars (guard must use bytes)');
+});
+
 // ============================================================================
 // RESULTS
 // ============================================================================
