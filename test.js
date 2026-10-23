@@ -1172,7 +1172,32 @@ test('subtitleCache: put skips redis for content over REDIS_MAX_BYTES (utf8 byte
 console.log('\n--- server config parsing ---');
 
 const serverApp = require('./server');
-const { parseConfigParam } = serverApp._test;
+const { parseConfigParam, configFromQuery } = serverApp._test;
+
+test('configFromQuery: extracts subtitle config keys only', () => {
+  assert.deepStrictEqual(
+    configFromQuery({ mainLang: 'German [ger]', transLang: 'French [fre]', filename: 'x.mp4', style: 'abc' }),
+    { mainLang: 'German [ger]', transLang: 'French [fre]' }
+  );
+});
+
+test('configFromQuery: null when no config keys are present', () => {
+  assert.strictEqual(configFromQuery({ filename: 'x.mp4' }), null);
+  assert.strictEqual(configFromQuery({}), null);
+  assert.strictEqual(configFromQuery(null), null);
+});
+
+test('configFromQuery: ignores non-string and empty values (repeated params arrive as arrays)', () => {
+  assert.strictEqual(configFromQuery({ mainLang: ['German [ger]'], transLang: ['French [fre]'] }), null);
+  assert.strictEqual(configFromQuery({ mainLang: '', transLang: '' }), null);
+});
+
+test('configFromQuery: carries style keys through for clamping', () => {
+  assert.deepStrictEqual(
+    configFromQuery({ transColor: 'Red (#f43f5e)', mainBold: 'false', swapLines: 'true' }),
+    { transColor: 'Red (#f43f5e)', mainBold: 'false', swapLines: 'true' }
+  );
+});
 
 test('parseConfigParam: compact pipe form (website URLs)', () => {
   assert.deepStrictEqual(

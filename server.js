@@ -408,6 +408,55 @@ function parseConfigParam(raw) {
   return null;
 }
 
+// Config keys accepted as query parameters on the bare resource URL —
+// Stremio v5 passes the in-app (native) addon configuration this way,
+// e.g. /subtitles/movie/tt123.json?mainLang=German%20[ger]&transLang=...
+const SUBTITLE_CONFIG_KEYS = [
+  'mainLang', 'transLang', 'mainColor', 'transColor',
+  'mainBold', 'transItalic', 'marker', 'swapLines'
+];
+
+/**
+ * Extract an addon-config object from request query parameters.
+ * Only whitelisted string values are collected; repeated params arrive
+ * as arrays and are ignored (a malformed config is better than a broken
+ * one). Returns null when no config keys are present (legacy flow).
+ */
+function configFromQuery(query) {
+  const cfg = {};
+  let found = false;
+  if (query && typeof query === 'object') {
+    for (const key of SUBTITLE_CONFIG_KEYS) {
+      const value = query[key];
+      if (typeof value === 'string' && value !== '') {
+        cfg[key] = value;
+        found = true;
+      }
+    }
+  }
+  return found ? cfg : null;
+}
+
+// Shared subtitles-response tail: run the handler, resolve the
+// {{ADDON_URL}} placeholder, and respond with edge-cache headers.
+async function serveSubtitles(res, baseUrl, { type, id, extra, config }) {
+  const result = await subtitlesHandler({ type, id, extra, config });
+  if (result.subtitles) {
+    result.subtitles = result.subtitles.map(sub => ({
+      ...sub,
+      url: sub.url.replace('{{ADDON_URL}}', baseUrl)
+    }));
+  }
+  // Manifest-style response is essentially deterministic for a given
+  // (config, type, id) for at least an hour — Stremio polls this on
+  // every play and resume, so caching it on Vercel's edge is a major
+  // CPU saving for popular titles. We use a short max-age for the
+  // browser/Stremio (so config changes propagate fast) but a longer
+  // s-maxage on the edge.
+  res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=3600, stale-while-revalidate=21600');
+  res.json(result);
+}
+
 // Configuration-specific manifest
 app.get('/:config/manifest.json', (req, res) => {
   try {
@@ -456,25 +505,34 @@ app.get('/:config/subtitles/:type/:id/:extra?.json', async (req, res) => {
     trackSubtitleRequest(parseLangCode(parsed.mainLang), parseLangCode(parsed.transLang), type, id);
     debugServer.log(`Subtitle request: ${type}/${id}, langs: ${parseLangCode(parsed.mainLang)}+${parseLangCode(parsed.transLang)}`);
 
-    const result = await subtitlesHandler({ type, id, extra, config });
-    
-    // Replace placeholder URL with actual server URL
-    const baseUrl = getExternalUrl(req);
-    if (result.subtitles) {
-      result.subtitles = result.subtitles.map(sub => ({
-        ...sub,
-        url: sub.url.replace('{{ADDON_URL}}', baseUrl)
-      }));
-    }
+    await serveSubtitles(res, getExternalUrl(req), { type, id, extra, config: parsed });
+  } catch (error) {
+    debugServer.error('Error handling subtitle request:', sanitizeForLogging(error.message));
+    res.json({ subtitles: [] });
+  }
+});
 
-    // Manifest-style response is essentially deterministic for a given
-    // (config, type, id) for at least an hour — Stremio polls this on
-    // every play and resume, so caching it on Vercel's edge is a major
-    // CPU saving for popular titles. We use a short max-age for the
-    // browser/Stremio (so config changes propagate fast) but a longer
-    // s-maxage on the edge.
-    res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=3600, stale-while-revalidate=21600');
-    res.json(result);
+// Bare resource URL (Stremio v5 native in-app configured addons): the
+// configuration arrives as query parameters instead of a path segment.
+// Handled here, ahead of the SDK router, so the config is honoured and
+// the {{ADDON_URL}} placeholder is resolved — the SDK router does neither.
+app.get('/subtitles/:type/:id/:extra?.json', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const extra = req.params.extra ? parseExtra(req.params.extra) : {};
+    // Everything else in the query (filename, videoSize, ...) is extra
+    // context for the subtitle handler.
+    for (const [key, value] of Object.entries(req.query || {})) {
+      if (typeof value === 'string' && !SUBTITLE_CONFIG_KEYS.includes(key)) {
+        extra[key] = value;
+      }
+    }
+    const config = configFromQuery(req.query);
+    if (config) {
+      trackSubtitleRequest(parseLangCode(config.mainLang), parseLangCode(config.transLang), type, id);
+      debugServer.log(`Subtitle request (in-app config): ${type}/${id}, langs: ${parseLangCode(config.mainLang)}+${parseLangCode(config.transLang)}`);
+    }
+    await serveSubtitles(res, getExternalUrl(req), { type, id, extra, config });
   } catch (error) {
     debugServer.error('Error handling subtitle request:', sanitizeForLogging(error.message));
     res.json({ subtitles: [] });
@@ -551,4 +609,4 @@ if (!process.env.VERCEL) {
 
 // Export for Vercel
 module.exports = app;
-module.exports._test = { parseConfigParam, getClientIP, sweepRateLimitStore, rateLimitStore };
+module.exports._test = { parseConfigParam, configFromQuery, getClientIP, sweepRateLimitStore, rateLimitStore };
