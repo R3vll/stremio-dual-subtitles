@@ -141,6 +141,23 @@ docker run -p 7000:7000 ummugulsunn/stremio-dual-subtitles
 
 ## Configuration
 
+### In-App Configuration (No Website Needed)
+
+After installing from the **base manifest** (`https://your-domain/manifest.json`),
+Stremio shows its own configuration screen inside the app where you pick:
+
+- Primary and Secondary languages
+- Subtitle styling: primary/secondary color, bold/italic, the secondary
+  line marker, and line order
+
+Your choices are saved with the addon — no external website required. Color
+picking uses preset names (e.g. `Red (#f43f5e)`); pick `None (player
+default)` for the primary line to leave it unstyled.
+
+> **Player caveat:** styling relies on SRT tags (`<font color>`, `<b>`,
+> `<i>`). Clients that ignore those tags render plain text — this is a
+> limitation of the player, not the addon.
+
 ### Environment Variables
 
 Create a `.env` file in the project root:
