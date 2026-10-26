@@ -1000,6 +1000,22 @@ test('buildStyleCode + parseStyleCode: full custom config roundtrip', () => {
   assert.strictEqual(s.swapLines, true);
 });
 
+test('buildStyleCode: native form checkbox values (on / omitted)', () => {
+  // Stremio's config form serializes via FormData: checked -> 'on', unchecked -> key absent
+  const form = { mainLang: 'English [eng]', transLang: 'Turkish [tur]',
+    mainColor: 'None (player default)', transColor: 'Gray (#94a3b8)', marker: '\u203a' };
+  assert.strictEqual(buildStyleCode({ ...form, mainBold: 'on', transItalic: 'on' }), 'none|#94a3b8|1|1|\u203a|0');
+  assert.strictEqual(buildStyleCode({ ...form, swapLines: 'on' }), 'none|#94a3b8|0|0|\u203a|1');
+  assert.strictEqual(buildStyleCode({ ...form, mainBold: 'checked' }), 'none|#94a3b8|1|0|\u203a|0');
+});
+
+test('buildStyleCode: language-only config keeps defaults', () => {
+  assert.strictEqual(
+    buildStyleCode({ mainLang: 'English [eng]', transLang: 'Turkish [tur]' }),
+    'none|#94a3b8|1|1|\u203a|0'
+  );
+});
+
 test('parseStyleCode: invalid fields fall back to defaults', () => {
   const s = parseStyleCode('zzz|zzz|9|9|<script>|9');
   assert.strictEqual(s.transColor, '#94a3b8', 'invalid color -> default gray');
@@ -1118,10 +1134,11 @@ test('manifest: style defaults are safe', () => {
   const byKey = Object.fromEntries(manifest.config.map(c => [c.key, c]));
   assert.strictEqual(byKey.mainColor.default, 'None (player default)');
   assert.strictEqual(byKey.transColor.default, 'Gray (#94a3b8)');
-  assert.strictEqual(byKey.mainBold.default, 'true');
-  assert.strictEqual(byKey.transItalic.default, 'true');
+  // SDK convention: 'checked' = enabled by default, no default = unchecked
+  assert.strictEqual(byKey.mainBold.default, 'checked');
+  assert.strictEqual(byKey.transItalic.default, 'checked');
   assert.strictEqual(byKey.marker.default, '\u203a');
-  assert.strictEqual(byKey.swapLines.default, 'false');
+  assert.strictEqual(byKey.swapLines.default, undefined);
   for (const key of ['mainColor', 'transColor', 'marker']) {
     assert.ok(Array.isArray(byKey[key].options) && byKey[key].options.length > 0,
       `${key} must offer options`);

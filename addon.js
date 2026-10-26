@@ -245,14 +245,14 @@ const manifest = {
       type: 'checkbox',
       title: 'Bold Primary Line',
       required: false,
-      default: 'true'
+      default: 'checked'
     },
     {
       key: 'transItalic',
       type: 'checkbox',
       title: 'Italic Secondary Line',
       required: false,
-      default: 'true'
+      default: 'checked'
     },
     {
       key: 'marker',
@@ -266,8 +266,7 @@ const manifest = {
       key: 'swapLines',
       type: 'checkbox',
       title: 'Show Secondary Line Above Primary',
-      required: false,
-      default: 'false'
+      required: false
     }
   ]
 };
