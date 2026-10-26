@@ -103,8 +103,10 @@ const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 60);
 const rateLimitStore = new Map();
 
 app.use((req, res, next) => {
-  // Skip rate limiting for static files and health check
-  if (req.path.startsWith('/logo') || req.path === '/health') {
+  // Skip rate limiting for static files, health check and the two reads that
+  // are served from cache anyway (landing page, public stats)
+  if (req.path.startsWith('/logo') || req.path.startsWith('/favicon') ||
+      req.path === '/health' || req.path === '/configure' || req.path === '/api/stats/public') {
     return next();
   }
   
@@ -210,11 +212,25 @@ app.get('/health', (req, res) => {
 
 // Landing/configuration page
 app.get('/', (req, res) => {
-  res.redirect('/configure');
+  res.redirect(301, '/configure');
 });
+
+// The landing HTML only varies with stats, which the page refreshes
+// client-side anyway, so it can be cached in memory and at Vercel's edge.
+// Page views are tracked client-side (/api/track), so caching loses nothing.
+const LANDING_CACHE_TTL_MS = 60 * 1000;
+const landingCache = new Map(); // baseUrl -> { html, at }
 
 app.get('/configure', async (req, res) => {
   const baseUrl = getExternalUrl(req);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600');
+
+  const cached = landingCache.get(baseUrl);
+  if (cached && Date.now() - cached.at < LANDING_CACHE_TTL_MS) {
+    return res.send(cached.html);
+  }
+
   const manifestWithLogo = getManifestWithLogo(req);
   let publicStats;
   try {
@@ -223,7 +239,8 @@ app.get('/configure', async (req, res) => {
     publicStats = { totalSubtitlesServed: 0, totalInstalls: 0, totalPageViews: 0, uniqueVisitors: 0, topPairs: [], live: false };
   }
   const html = generateLandingHTML(manifestWithLogo, baseUrl, publicStats);
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (landingCache.size >= 8) landingCache.clear();
+  landingCache.set(baseUrl, { html, at: Date.now() });
   res.send(html);
 });
 
@@ -371,10 +388,21 @@ app.get('/subs/:type/:imdbId/:season/:episode/:mainLang/:transLang/:mainSubId/:t
   }
 });
 
-// Configuration-specific configure page (redirect to main configure)
+// Configuration-specific configure page (redirect to main configure, pre-filled)
+const PREFILL_KEYS = ['mainLang', 'transLang', 'marker', 'mainBold', 'transItalic', 'swapLines'];
+
+// "Configure" on an installed addon lands here: hand the current settings to
+// the landing page so the form opens pre-filled instead of from scratch.
 app.get('/:config/configure', (req, res) => {
-  res.redirect('/configure');
+  const parsed = parseConfigParam(req.params.config);
+  if (!parsed) return res.redirect('/configure');
+  const prefill = {};
+  for (const key of PREFILL_KEYS) {
+    if (typeof parsed[key] === 'string') prefill[key] = parsed[key];
+  }
+  res.redirect('/configure?config=' + encodeURIComponent(JSON.stringify(prefill)));
 });
+
 
 // Sentinel used internally by the config parser.
 const INVALID_CONFIG = Symbol('invalid-config');
