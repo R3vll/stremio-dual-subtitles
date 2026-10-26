@@ -21,7 +21,7 @@ const {
 const { generateStatsHTML, generatePrivacyHTML, generateErrorHTML } = require('./lib/templates');
 const { builder, manifest, getSubtitle, subtitlesHandler, generateDynamicSubtitle } = require('./addon');
 const generateLandingHTML = require('./landingTemplate');
-const { parseLangCode } = require('./languages');
+const { parseLangCode, getLanguageOptions } = require('./languages');
 
 // Configuration
 const PORT = process.env.PORT || 7000;
@@ -63,11 +63,18 @@ app.use(compression());
 // JSON body parser for API endpoints
 app.use(express.json());
 
-// CORS middleware
+// CORS for the addon/API surface (Stremio clients call it cross-origin);
+// the HTML pages don't need it. Baseline security headers on everything.
+const HTML_PAGES = new Set(['/', '/configure', '/privacy', '/stats']);
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (!HTML_PAGES.has(req.path)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -117,6 +124,9 @@ app.use((req, res, next) => {
   }
 
   if (entry.count >= RATE_LIMIT_MAX) {
+    if (req.path.startsWith('/api/')) {
+      return res.status(429).json({ success: false, error: 'Too many requests' });
+    }
     const baseUrl = getExternalUrl(req);
     const manifestWithLogo = getManifestWithLogo(req);
     res.status(429).send(generateErrorHTML(429, 'Too many requests', baseUrl, manifestWithLogo));
@@ -143,20 +153,27 @@ rateLimitSweeperTimer.unref(); // don't keep the process alive just for sweeping
 // ============================================================================
 
 // Analytics tracking endpoint
+const VALID_LANGUAGE_OPTIONS = new Set(getLanguageOptions());
+const isLanguageOption = (v) => typeof v === 'string' && VALID_LANGUAGE_OPTIONS.has(v);
+const shortString = (v, max) => (typeof v === 'string' ? v.slice(0, max) : undefined);
+
 app.post('/api/track', (req, res) => {
   try {
-    const { event, page, mainLang, transLang, contentType } = req.body;
+    const { event, page, mainLang, transLang, contentType } = req.body || {};
     const ip = getClientIP(req);
     
     switch (event) {
       case 'pageView':
-        trackPageView(ip, page);
+        trackPageView(ip, shortString(page, 32) || 'unknown');
         break;
       case 'install':
-        trackInstall(ip, mainLang, transLang);
-        break;
       case 'subtitleRequest':
-        trackSubtitleRequest(mainLang, transLang, contentType);
+        // Free-form strings here would reach the analytics store (and the stats page)
+        if (!isLanguageOption(mainLang) || !isLanguageOption(transLang)) {
+          return res.status(400).json({ success: false, error: 'Unknown language' });
+        }
+        if (event === 'install') trackInstall(ip, mainLang, transLang);
+        else trackSubtitleRequest(mainLang, transLang, shortString(contentType, 16));
         break;
     }
     
